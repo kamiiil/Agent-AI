@@ -1,5 +1,5 @@
-Konsolowy klient OpenRouter
-===========================
+FitMentor - konsolowy trener personalny
+=======================================
 
 Wymagania: Python 3.10 lub nowszy.
 
@@ -7,9 +7,20 @@ Uruchomienie:
 
 	python3 chat.py
 
-Klient odczytuje klucz `OPENROUTER_API_KEY` lub `API_KEY` z `env.env`. Można
+FitMentor odpowiada po polsku i pomaga w obszarach treningu, diety, regeneracji
+oraz ogólnych pytań o zdrowie. W tematach medycznych nie zastępuje lekarza i
+sygnalizuje sytuacje wymagające pilnej pomocy.
+
+Program odczytuje klucz `OPENROUTER_API_KEY` lub `API_KEY` z `env.env`. Można
 też ustawić `OPENROUTER_API_KEY` jako zmienną środowiskową. Model zmienia się
 przez `python3 chat.py --model nazwa/modelu` albo zmienną `OPENROUTER_MODEL`.
 
-W konsoli dostępne są komendy `/clear`, `/exit` i `/quit`.
+W konsoli dostępne są komendy `/help`, `/start`, `/clear`, `/exit` i `/quit`.
+
+Przykładowe pytania:
+
+- `Ułóż mi 3-dniowy trening w domu dla początkującego`
+- `Jak jeść, żeby budować masę mięśniową?`
+- `Boli mnie kolano po bieganiu - co sprawdzić?`
+- `Policz moje BMI, mam 80 kg i 180 cm`
 
