@@ -5,9 +5,15 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+import anyio
+from mcp.client.session import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
 
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -24,6 +30,11 @@ wzrost w cm. Jeśli brakuje któregokolwiek parametru, poproś o niego i nie
 wywołuj narzędzia. Gdy masz oba parametry, użyj funkcji calculate_bmi zamiast
 liczyć wynik samodzielnie. BMI traktuj jako orientacyjny wskaźnik dla dorosłych,
 nie jako diagnozę; uwzględnij ograniczenia interpretacji, np. dużą masę mięśniową.
+Jeśli użytkownik pyta o produkt spożywczy, jego kalorie, makro, skład lub
+alergeny, użyj funkcji analyze_product. Przyjmij nazwę produktu albo kod
+kreskowy. Po otrzymaniu danych z narzędzia zinterpretuj je w kontekście celu
+użytkownika, ale nie wymyślaj brakujących wartości i zaznacz, gdy dane są
+niepełne. Wartości odżywcze podawaj przede wszystkim na 100 g lub 100 ml.
 Zanim zaproponujesz plan, dopytaj o cel, poziom doświadczenia, dostępny sprzęt,
 czas, ograniczenia i najważniejsze informacje o użytkowniku. Dawaj praktyczne,
 konkretne odpowiedzi, ale nie udawaj lekarza i nie stawiaj diagnoz.
@@ -66,6 +77,26 @@ BMI_TOOL = {
     },
 }
 
+PRODUCT_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "analyze_product",
+        "description": "Pobiera z OpenFoodFacts informacje o produkcie spożywczym po kodzie kreskowym albo nazwie.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Kod kreskowy produktu albo jego nazwa.",
+                    "minLength": 2,
+                }
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 
 def load_api_key() -> str:
     """Reads API_KEY from the environment or the local env.env file."""
@@ -101,6 +132,143 @@ def calculate_bmi(weight_kg: float, height_cm: float) -> dict[str, object]:
     else:
         category = "otyłość"
     return {"bmi": round(bmi, 1), "category": category}
+
+
+def openfoodfacts_get(paths: list[str]) -> dict[str, object]:
+    """Pobiera JSON z ponowieniem po chwilowej niedostępności usługi."""
+    last_error: Exception | None = None
+    for path in paths:
+        for attempt in range(3):
+            request = Request(path, headers={"User-Agent": "FitMentor/1.0 (nutrition assistant)"})
+            try:
+                with urlopen(request, timeout=15) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                if not isinstance(data, dict):
+                    raise RuntimeError("OpenFoodFacts zwrócił nieprawidłową odpowiedź.")
+                return data
+            except HTTPError as error:
+                last_error = error
+                if error.code not in {429, 500, 502, 503, 504}:
+                    raise RuntimeError(f"OpenFoodFacts zwrócił HTTP {error.code}.") from error
+            except (URLError, json.JSONDecodeError, RuntimeError) as error:
+                last_error = error
+            if attempt < 2:
+                time.sleep(1 + attempt)
+    raise RuntimeError(
+        "OpenFoodFacts jest chwilowo niedostępny (503). Spróbuj ponownie za chwilę."
+    ) from last_error
+
+
+def analyze_product(query: str) -> dict[str, object]:
+    """Pobiera najważniejsze dane żywieniowe z OpenFoodFacts."""
+    print(f"Pobieranie danych o produkcie: {query}", file=sys.stderr)
+    query = query.strip()
+    if not query:
+        raise ValueError("Podaj nazwę produktu albo kod kreskowy.")
+
+    if query.isdigit():
+        paths = [
+            f"https://world.openfoodfacts.org/api/v2/product/{quote(query)}.json",
+            f"https://openfoodfacts.org/api/v2/product/{quote(query)}.json",
+        ]
+        payload = openfoodfacts_get(paths)
+        products = [payload.get("product", {})] if payload.get("status") == 1 else []
+    else:
+        suffix = (
+            "cgi/search.pl?"
+            f"search_terms={quote(query)}&search_simple=1&action=process&json=1&page_size=5"
+        )
+        payload = openfoodfacts_get([
+            f"https://world.openfoodfacts.org/{suffix}",
+            f"https://openfoodfacts.org/{suffix}",
+        ])
+        products = payload.get("products", [])
+
+    if not products:
+        return {"found": False, "query": query, "message": "Nie znaleziono produktu."}
+
+    product = products[0]
+    nutrients = product.get("nutriments", {})
+    nutrient_keys = {
+        "energy_kcal_100g": "energy-kcal_100g",
+        "protein_g_100g": "proteins_100g",
+        "carbohydrates_g_100g": "carbohydrates_100g",
+        "sugars_g_100g": "sugars_100g",
+        "fat_g_100g": "fat_100g",
+        "saturated_fat_g_100g": "saturated-fat_100g",
+        "fiber_g_100g": "fiber_100g",
+        "salt_g_100g": "salt_100g",
+    }
+    nutrition = {
+        name: nutrients[key]
+        for name, key in nutrient_keys.items()
+        if nutrients.get(key) is not None
+    }
+    return {
+        "found": True,
+        "product_name": product.get("product_name") or product.get("product_name_pl") or "Nieznany produkt",
+        "brand": product.get("brands", ""),
+        "barcode": product.get("code"),
+        "serving_size": product.get("serving_size"),
+        "nutrition_per_100g": nutrition,
+        "ingredients": product.get("ingredients_text_pl") or product.get("ingredients_text"),
+        "allergens": product.get("allergens_tags", []),
+        "nutriscore": product.get("nutriscore_grade"),
+        "nova_group": product.get("nova_group"),
+    }
+
+
+def list_mcp_tools() -> list[dict[str, object]]:
+    """Zwraca listę narzędzi z uruchomionego serwera MCP."""
+
+    async def _run() -> list[dict[str, object]]:
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=["mcp_server.py"],
+            cwd=str(Path(__file__).resolve().parent),
+        )
+        async with stdio_client(params) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                response = await session.list_tools()
+                return [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description or "",
+                            "parameters": getattr(tool, "input_schema", None) or {"type": "object", "properties": {}},
+                        },
+                    }
+                    for tool in response.tools
+                ]
+
+    return anyio.run(_run, backend="trio")
+
+
+def call_mcp_tool(tool_name: str, arguments: dict[str, object]) -> dict[str, object]:
+    """Wywołuje narzędzie serwera MCP i zwraca jego structured_content."""
+
+    async def _run() -> dict[str, object]:
+        params = StdioServerParameters(
+            command=sys.executable,
+            args=["mcp_server.py"],
+            cwd=str(Path(__file__).resolve().parent),
+        )
+        async with stdio_client(params) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                response = await session.call_tool(tool_name, arguments)
+                if response.structured_content is not None:
+                    return dict(response.structured_content)
+
+                text_parts: list[str] = []
+                for item in response.content:
+                    if hasattr(item, "text"):
+                        text_parts.append(str(item.text))
+                return {"content": "".join(text_parts)}
+
+    return anyio.run(_run, backend="trio")
 
 
 def ask_openrouter(
@@ -236,13 +404,14 @@ def main() -> int:
         messages.append({"role": "user", "content": prompt})
         try:
             answer = ""
+            mcp_tools = list_mcp_tools()
             for _ in range(4):
                 response = ask_openrouter(
                     api_key,
                     args.model,
                     messages,
                     args.temperature,
-                    tools=[BMI_TOOL],
+                    tools=mcp_tools,
                 )
                 try:
                     message = response["choices"][0]["message"]
@@ -259,21 +428,19 @@ def main() -> int:
 
                 for tool_call in tool_calls:
                     function = tool_call.get("function", {})
-                    if function.get("name") != "calculate_bmi":
-                        raise RuntimeError(f"Model wywołał nieznane narzędzie: {function.get('name')}")
+                    tool_name = function.get("name")
                     try:
                         arguments = json.loads(function.get("arguments", "{}"))
-                        result = calculate_bmi(
-                            float(arguments["weight_kg"]),
-                            float(arguments["height_cm"]),
-                        )
+                        if tool_name is None:
+                            raise ValueError("Model nie podał nazwy narzędzia.")
+                        result = call_mcp_tool(tool_name, arguments)
                     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
                         result = {"error": str(error)}
                     messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": tool_call["id"],
-                            "name": "calculate_bmi",
+                            "name": tool_name,
                             "content": json.dumps(result, ensure_ascii=False),
                         }
                     )
