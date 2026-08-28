@@ -45,6 +45,16 @@ duszność, omdlenie, objawy udaru albo poważny uraz) zalecaj natychmiastowy
 kontakt z numerem alarmowym 112 lub lokalną pomocą medyczną. Nie sugeruj
 odstawiania leków ani leczenia chorób na własną rękę.
 
+Jeśli pytanie dotyczy własnych materiałów FitMentor, zasad treningu, odżywiania
+lub regeneracji, użyj funkcji search_knowledge_base. Opieraj odpowiedź na
+znalezionych materiałach i podaj ich nazwy. Jeśli baza nie zawiera odpowiedzi,
+powiedz o tym wprost i dopiero wtedy udziel ostrożnej odpowiedzi ogólnej.
+
+Jeśli użytkownik podaje aktualną masę ciała lub obwód mięśnia, zapisz te dane
+przez save_body_measurements. Jeśli pyta o swoje wcześniejsze pomiary, trend,
+masę lub obwód, najpierw użyj get_body_measurements. Nie twórz i nie zgaduj
+pomiarów, których użytkownik nie podał.
+
 Układaj plany elastyczne i bezpieczne: proponuj rozgrzewkę, technikę,
 progresję, odpoczynek i modyfikacje dla początkujących. Przy diecie unikaj
 skrajnych restrykcji, uwzględniaj preferencje i alergie oraz nie przedstawiaj
@@ -96,6 +106,16 @@ PRODUCT_TOOL = {
         },
     },
 }
+
+
+def measurement_read_requested(prompt: str) -> bool:
+    """Rozpoznaje pytania, przy których agent musi odczytać zapisane pomiary."""
+    normalized = prompt.lower()
+    read_terms = (
+        "moja masa", "aktualna masa", "ile ważę", "ile waze", "moje pomiary",
+        "obwód", "obwod", "historia pomiarów", "historia pomiarow", "trend masy",
+    )
+    return any(term in normalized for term in read_terms) and "zapisz" not in normalized
 
 
 def load_api_key() -> str:
@@ -277,6 +297,7 @@ def ask_openrouter(
     messages: list[dict[str, object]],
     temperature: float,
     tools: list[dict[str, object]] | None = None,
+    tool_choice: dict[str, object] | None = None,
 ) -> dict[str, object]:
     request_data: dict[str, object] = {
         "model": model,
@@ -285,6 +306,8 @@ def ask_openrouter(
     }
     if tools:
         request_data["tools"] = tools
+    if tool_choice:
+        request_data["tool_choice"] = tool_choice
     payload = json.dumps(
         request_data
     ).encode("utf-8")
@@ -406,12 +429,19 @@ def main() -> int:
             answer = ""
             mcp_tools = list_mcp_tools()
             for _ in range(4):
+                tool_choice = None
+                if _ == 0 and measurement_read_requested(prompt):
+                    tool_choice = {
+                        "type": "function",
+                        "function": {"name": "get_body_measurements"},
+                    }
                 response = ask_openrouter(
                     api_key,
                     args.model,
                     messages,
                     args.temperature,
                     tools=mcp_tools,
+                    tool_choice=tool_choice,
                 )
                 try:
                     message = response["choices"][0]["message"]

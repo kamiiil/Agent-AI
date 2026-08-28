@@ -17,6 +17,17 @@ przez `python3 chat.py --model nazwa/modelu` albo zmienną `OPENROUTER_MODEL`.
 
 W konsoli dostępne są komendy `/help`, `/start`, `/clear`, `/exit` i `/quit`.
 
+FitMentor ma lokalną bazę RAG w katalogu `knowledge/`. Przy pytaniach o własne
+materiały model korzysta z narzędzia `search_knowledge_base`. Indeks `.rag_index.json`
+jest tworzony automatycznie i aktualizuje się po zmianie dokumentów.
+
+Dokumenty można dodawać jako pliki Markdown do `knowledge/`. Wyszukiwanie działa
+lokalnie i nie wysyła ich do OpenRouter.
+
+Pomiary użytkownika są zapisywane lokalnie w bazie `.fitmentor.db`. Agent może
+zapisać masę i dowolne obwody przez `save_body_measurements`, a odczytać najnowszy
+stan i historię przez `get_body_measurements`. Dane nie są wysyłane do OpenRouter.
+
 Przykładowe pytania:
 
 - `Ułóż mi 3-dniowy trening w domu dla początkującego`

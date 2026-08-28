@@ -17,11 +17,21 @@ from mcp.server.lowlevel.server import Server
 from mcp.server.stdio import stdio_server
 
 from chat import BMI_TOOL, PRODUCT_TOOL, analyze_product, calculate_bmi
+from body_tracking import (
+    GET_BODY_MEASUREMENTS_TOOL,
+    SAVE_BODY_MEASUREMENTS_TOOL,
+    get_body_measurements,
+    save_body_measurements,
+)
+from rag import RAG_TOOL, search_knowledge_base
 
 
 TOOL_REGISTRY: dict[str, Callable[..., Any]] = {
     "calculate_bmi": calculate_bmi,
     "analyze_product": analyze_product,
+    "search_knowledge_base": search_knowledge_base,
+    "save_body_measurements": save_body_measurements,
+    "get_body_measurements": get_body_measurements,
 }
 
 
@@ -34,7 +44,13 @@ def _build_tool(tool_definition: dict[str, Any]) -> types.Tool:
     )
 
 
-TOOLS = [_build_tool(BMI_TOOL), _build_tool(PRODUCT_TOOL)]
+TOOLS = [
+    _build_tool(BMI_TOOL),
+    _build_tool(PRODUCT_TOOL),
+    _build_tool(RAG_TOOL),
+    _build_tool(SAVE_BODY_MEASUREMENTS_TOOL),
+    _build_tool(GET_BODY_MEASUREMENTS_TOOL),
+]
 
 
 async def handle_list_tools(

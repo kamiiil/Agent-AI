@@ -1,3 +1,6 @@
+.fitmentor.db
+.fitmentor.db-shm
+.fitmentor.db-wal
 env.env
 __pycache__/
 *.py[cod]
