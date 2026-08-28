@@ -7,6 +7,14 @@ Uruchomienie:
 
 	python3 chat.py
 
+Graficzny interfejs webowy:
+
+	python3 app.py
+
+Następnie otwórz `http://127.0.0.1:8000`. GUI udostępnia rozmowę z FitMentorem,
+panel lokalnych pomiarów masy i obwodów oraz boczny panel wartości odżywczych,
+który aktualizuje się po wywołaniu narzędzia `analyze_product`.
+
 FitMentor odpowiada po polsku i pomaga w obszarach treningu, diety, regeneracji
 oraz ogólnych pytań o zdrowie. W tematach medycznych nie zastępuje lekarza i
 sygnalizuje sytuacje wymagające pilnej pomocy.

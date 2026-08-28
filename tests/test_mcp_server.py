@@ -47,6 +47,19 @@ class TestMcpServer(unittest.TestCase):
         self.assertTrue(result["found"])
         self.assertEqual(result["results"][0]["source"], "odzywianie-na-mase.md")
 
+    def test_knowledge_base_returns_eating_disorder_conversation_rules(self):
+        spec = importlib.util.spec_from_file_location("mcp_server", MODULE_PATH)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        result = module.TOOL_REGISTRY["search_knowledge_base"](
+            "zasady rozmowy z osobą z zaburzeniami odżywiania"
+        )
+
+        self.assertTrue(result["found"])
+        self.assertEqual(result["results"][0]["source"], "zaburzenia-odzywiania.md")
+        self.assertIn("bez oceniania", result["results"][0]["content"])
+
     def test_body_measurements_are_saved_and_read_back(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             os.environ["FITMENTOR_DB_PATH"] = str(pathlib.Path(temporary_directory) / "measurements.db")

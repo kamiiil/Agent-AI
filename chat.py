@@ -342,6 +342,71 @@ def ask_openrouter(
         raise RuntimeError(f"Nieoczekiwana odpowiedź API: {data}") from error
 
 
+def ask_fitmentor(
+    api_key: str,
+    model: str,
+    messages: list[dict[str, object]],
+    prompt: str,
+    temperature: float = 0.7,
+) -> tuple[str, list[dict[str, object]]]:
+    """Obsługuje jedną wiadomość i zwraca odpowiedź oraz wyniki narzędzi."""
+    messages.append({"role": "user", "content": prompt})
+    tool_events: list[dict[str, object]] = []
+    try:
+        mcp_tools = list_mcp_tools()
+        for _ in range(4):
+            tool_choice = None
+            if _ == 0 and measurement_read_requested(prompt):
+                tool_choice = {
+                    "type": "function",
+                    "function": {"name": "get_body_measurements"},
+                }
+            response = ask_openrouter(
+                api_key,
+                model,
+                messages,
+                temperature,
+                tools=mcp_tools,
+                tool_choice=tool_choice,
+            )
+            try:
+                message = response["choices"][0]["message"]
+                if not isinstance(message, dict):
+                    raise TypeError("wiadomość modelu nie jest obiektem")
+            except (KeyError, IndexError, TypeError) as error:
+                raise RuntimeError(f"Nieoczekiwana odpowiedź API: {response}") from error
+
+            tool_calls = message.get("tool_calls") or []
+            messages.append(message)
+            if not tool_calls:
+                return str(message.get("content") or "").strip(), tool_events
+
+            for tool_call in tool_calls:
+                function = tool_call.get("function", {})
+                tool_name = function.get("name")
+                arguments: dict[str, object] = {}
+                try:
+                    arguments = json.loads(function.get("arguments", "{}"))
+                    if tool_name is None:
+                        raise ValueError("Model nie podał nazwy narzędzia.")
+                    result = call_mcp_tool(tool_name, arguments)
+                except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+                    result = {"error": str(error)}
+                tool_events.append({"name": tool_name, "arguments": arguments, "result": result})
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call["id"],
+                        "name": tool_name,
+                        "content": json.dumps(result, ensure_ascii=False),
+                    }
+                )
+        raise RuntimeError("Model wykonał zbyt wiele wywołań narzędzia bez odpowiedzi.")
+    except RuntimeError:
+        messages.pop()
+        raise
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Rozmowa z modelem przez OpenRouter API")
     parser.add_argument(
@@ -424,60 +489,9 @@ def main() -> int:
             print("Historia rozmowy wyczyszczona.")
             continue
 
-        messages.append({"role": "user", "content": prompt})
         try:
-            answer = ""
-            mcp_tools = list_mcp_tools()
-            for _ in range(4):
-                tool_choice = None
-                if _ == 0 and measurement_read_requested(prompt):
-                    tool_choice = {
-                        "type": "function",
-                        "function": {"name": "get_body_measurements"},
-                    }
-                response = ask_openrouter(
-                    api_key,
-                    args.model,
-                    messages,
-                    args.temperature,
-                    tools=mcp_tools,
-                    tool_choice=tool_choice,
-                )
-                try:
-                    message = response["choices"][0]["message"]
-                    if not isinstance(message, dict):
-                        raise TypeError("wiadomość modelu nie jest obiektem")
-                except (KeyError, IndexError, TypeError) as error:
-                    raise RuntimeError(f"Nieoczekiwana odpowiedź API: {response}") from error
-
-                tool_calls = message.get("tool_calls") or []
-                messages.append(message)
-                if not tool_calls:
-                    answer = str(message.get("content") or "").strip()
-                    break
-
-                for tool_call in tool_calls:
-                    function = tool_call.get("function", {})
-                    tool_name = function.get("name")
-                    try:
-                        arguments = json.loads(function.get("arguments", "{}"))
-                        if tool_name is None:
-                            raise ValueError("Model nie podał nazwy narzędzia.")
-                        result = call_mcp_tool(tool_name, arguments)
-                    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
-                        result = {"error": str(error)}
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call["id"],
-                            "name": tool_name,
-                            "content": json.dumps(result, ensure_ascii=False),
-                        }
-                    )
-            else:
-                raise RuntimeError("Model wykonał zbyt wiele wywołań narzędzia bez odpowiedzi.")
+            answer, _ = ask_fitmentor(api_key, args.model, messages, prompt, args.temperature)
         except RuntimeError as error:
-            messages.pop()
             print(f"Błąd: {error}", file=sys.stderr)
             continue
 

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FitMentor | Twój trener</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">FM</span><div><strong>FitMentor</strong><small>Twój spokojny trener</small></div></div>
+      <div class="status"><span class="status-dot"></span> Połączenie lokalne</div>
+    </header>
+
+    <section class="dashboard">
+      <div class="chat-column">
+        <div class="intro"><span class="eyebrow">Dzień dobry</span><h1>Co dziś budujemy?</h1><p>Trening, odżywianie, regeneracja albo po prostu lepszy ogląd własnych postępów.</p></div>
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <button id="scroll-to-latest" class="scroll-to-latest" type="button" aria-label="Przewiń do najnowszej wiadomości">↓ Najnowsze</button>
+        <form id="chat-form" class="composer">
+          <textarea id="prompt" rows="1" placeholder="Napisz do FitMentora..." aria-label="Wiadomość"></textarea>
+          <button type="submit" aria-label="Wyślij wiadomość"><span>Wyślij</span><b>↗</b></button>
+        </form>
+        <div class="suggestions"><button data-prompt="Jak jeść, żeby budować masę mięśniową?">Odżywianie na masę</button><button data-prompt="Pokaż moje ostatnie pomiary">Moje pomiary</button><button data-prompt="Ułóż mi prosty trening w domu">Trening w domu</button></div>
+      </div>
+
+      <aside class="side-column">
+        <div class="panel nutrition-panel" id="nutrition-panel">
+          <div class="panel-heading"><div><span class="eyebrow">Function call</span><h2>Wartości odżywcze</h2></div><span class="panel-icon">✦</span></div>
+          <div id="nutrition-content" class="empty-state"><span class="empty-icon">⌁</span><p>Zapytaj o produkt lub zeskanuj kod. Dane pojawią się tutaj podczas rozmowy.</p></div>
+        </div>
+        <div class="panel measurements-panel">
+          <div class="panel-heading"><div><span class="eyebrow">Twoje dane</span><h2>Statystyki użytkownika</h2></div><button id="refresh-measurements" class="icon-button" title="Odśwież statystyki" aria-label="Odśwież statystyki">↻</button></div>
+          <div id="measurements-content" class="measurements-content"><div class="loading-line"></div><div class="loading-line short"></div></div>
+        </div>
+      </aside>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
